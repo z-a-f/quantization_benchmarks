@@ -1,0 +1,3 @@
+[submodule "bench/FAI-PEP"]
+	path = bench/FAI-PEP
+	url = https://github.com/facebook/FAI-PEP.git
