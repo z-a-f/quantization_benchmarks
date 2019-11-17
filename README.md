@@ -10,8 +10,9 @@ TODO
 ----
 
 1. Documentation / Docstrings
-2. Non-`vision` moodels
-3. Larger datasets
+2. Add ability to save data meta information in the results
+3. Non-`vision` moodels
+4. Larger datasets
 
 
 Prerequisites
@@ -53,5 +54,8 @@ OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 ./bench.py
 ```
 
 **Results**
+
+| Model | <td colspan=2> Absolute Time</td> | Quantization Relative Time (Q/F) | <td colspan=2> Accuracy</td> |
+
 
 `TODO(z-a-f): Once the run is done, populate that!!!`
