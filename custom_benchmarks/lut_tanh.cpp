@@ -1,5 +1,5 @@
 // compile with
-// $> c++ -std=c++14 -O3 ./lut.cpp
+// $> c++ -std=c++14 -O3 ./lut_tanh.cpp
 
 #include <algorithm>
 #include <chrono>

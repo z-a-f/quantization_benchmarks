@@ -4,6 +4,8 @@
 ## TanH implementation -- `cmath` vs custom LUT
 
 ```console
+$> c++ -std=c++14 -O3 ./lut_tanh.cpp
+$> a.out
 
 Number of runs: 100000
 Creating a lookup table:
