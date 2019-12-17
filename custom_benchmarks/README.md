@@ -23,3 +23,6 @@ std::tanh (sorted input, with quantization):
 std::tanh (random input, with quantization):
   It took me on average 0.039479 us/iter
 ```
+
+Don't read too much into the difference between quantized and non-quantized runs -- the runtime is pretty much the same
+.
