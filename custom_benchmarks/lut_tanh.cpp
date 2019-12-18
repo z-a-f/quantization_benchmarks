@@ -70,7 +70,7 @@ vector<uint8_t> make_lut() {
   return result;
 }
 
-uint8_t get_from_lut(int32_t x, std::vector<uint8_t> lut) {
+uint8_t get_from_lut(int32_t x, const std::vector<uint8_t>& lut) {
   x = x - input_min;
   const int32_t idx_max = 255;
   if (x < 0) {
@@ -82,92 +82,119 @@ uint8_t get_from_lut(int32_t x, std::vector<uint8_t> lut) {
   return lut[x];
 }
 
+// Creating a LUT
+void run_make_lut(int runs) {
+  for (int idx = 0; idx < runs; ++idx) {
+    volatile vector<uint8_t> lut = make_lut();
+  }
+}
+
+// Getting from LUT (sorted)
+template <bool SORTED>
+__attribute__((noinline)) void run_access_lut(int runs, vector<uint8_t> lut) {
+  int start = -(runs >> 1);
+  int stop = -start - 1;
+  for (int idx = start; idx < stop; ++idx) {
+    int32_t x;
+    if (SORTED) {
+      x = idx;
+    } else {
+      x = rand() % runs + start;
+    }
+    volatile auto y = get_from_lut(x, lut);
+  }
+}
+
+// cmath impl
+template <bool SORTED, bool QUANT>
+__attribute__((noinline)) void run_cmath(int runs) {
+  int start = -(runs >> 1);
+  int stop = -start - 1;
+  for (int idx = start; idx < stop; ++idx) {
+    volatile int32_t x;
+    if (SORTED) {
+      x = idx;
+    } else {
+      x = rand() % runs + start;
+    }
+    if (QUANT) {
+      auto dx = float(x - i_zp) * i_sc;
+      auto y = std::tanh(dx);
+      auto qy = int32_t(std::round(y * o_sc_inv + o_zp));
+      volatile auto y_out = std::min<int32_t>(std::max<int32_t>(qy, qmin), qmax);
+    } else {
+      volatile auto y = std::tanh(x);
+    }
+  }
+}
+
+template <typename TIME_UNIT=micro>
+double count(high_resolution_clock::time_point t0, high_resolution_clock::time_point t1) {
+  return duration_cast<duration<double, TIME_UNIT>>(t1 - t0).count();
+}
+
 int main() {
-  constexpr int RUNS = 100000;
+  constexpr int RUNS = 1000000;
+  high_resolution_clock::time_point start;
+  high_resolution_clock::time_point stop;
   double time_span = 0;
-  vector<uint8_t> lut;
 
   cout << "Number of runs: " << RUNS << endl;
 
   cout << "Creating a lookup table:" << endl;
-  time_span = 0.0;
-  for (int idx = 0; idx < RUNS; ++idx) {
-    auto start = high_resolution_clock::now();
-    lut = make_lut();
-    auto stop = high_resolution_clock::now();
-    time_span += duration_cast<duration<double, micro>>(stop - start).count();
-  }
+  start = high_resolution_clock::now();
+  asm volatile("run_make_lut0:\n\t");
+  run_make_lut(RUNS);
+  stop = high_resolution_clock::now();
+  time_span = count(start, stop);
   cout << "\tIt took me on average " << time_span / RUNS << " us/iter" << endl;
 
   cout << "Fetching from the lookup table (sorted input):" << endl;
-  time_span = 0.0;
-  for (int idx = 0; idx < RUNS; ++idx) {
-    int32_t x = int32_t(RUNS / 2.0);
-    auto start = high_resolution_clock::now();
-    auto y = get_from_lut(x, lut);
-    auto stop = high_resolution_clock::now();
-    time_span += duration_cast<duration<double, micro>>(stop - start).count();
-  }
+  vector<uint8_t> lut = make_lut();
+  start = high_resolution_clock::now();
+  asm volatile("run_access_lut0:\n\t");
+  run_access_lut<true>(RUNS, lut);
+  stop = high_resolution_clock::now();
+  time_span = count(start, stop);
   cout << "\tIt took me on average " << time_span / RUNS << " us/iter" << endl;
 
   cout << "Fetching from the lookup table (random input):" << endl;
-  time_span = 0.0;
-  for (int idx = 0; idx < RUNS; ++idx) {
-    int32_t x = rand() % RUNS / 2;
-    auto start = high_resolution_clock::now();
-    auto y = get_from_lut(x, lut);
-    auto stop = high_resolution_clock::now();
-    time_span += duration_cast<duration<double, micro>>(stop - start).count();
-  }
+  start = high_resolution_clock::now();
+  asm volatile("run_access_lut1:\n\t");
+  run_access_lut<false>(RUNS, lut);
+  stop = high_resolution_clock::now();
+  time_span = count(start, stop);
   cout << "\tIt took me on average " << time_span / RUNS << " us/iter" << endl;
 
   cout << "std::tanh (sorted input, no quantization):" << endl;
-  time_span = 0.0;
-  for (int idx = 0; idx < RUNS; ++idx) {
-    int32_t x = int32_t(RUNS / 2.0);
-    auto start = high_resolution_clock::now();
-    auto y = std::tanh(x);
-    auto stop = high_resolution_clock::now();
-    time_span += duration_cast<duration<double, micro>>(stop - start).count();
-  }
+  start = high_resolution_clock::now();
+  asm volatile("run_cmath0:\n\t");
+  run_cmath<true, false>(RUNS);
+  stop = high_resolution_clock::now();
+  time_span = count(start, stop);
   cout << "\tIt took me on average " << time_span / RUNS << " us/iter" << endl;
 
   cout << "std::tanh (random input, no quantization):" << endl;
-  time_span = 0.0;
-  for (int idx = 0; idx < RUNS; ++idx) {
-    int32_t x = rand() % RUNS / 2;
-    auto start = high_resolution_clock::now();
-    auto y = std::tanh(x);
-    auto stop = high_resolution_clock::now();
-    time_span += duration_cast<duration<double, micro>>(stop - start).count();
-  }
+  start = high_resolution_clock::now();
+  asm volatile("run_cmath1:\n\t");
+  run_cmath<false, false>(RUNS);
+  stop = high_resolution_clock::now();
+  time_span = count(start, stop);
   cout << "\tIt took me on average " << time_span / RUNS << " us/iter" << endl;
 
   cout << "std::tanh (sorted input, with quantization):" << endl;
-  time_span = 0.0;
-  for (int idx = 0; idx < RUNS; ++idx) {
-    int32_t x = int32_t(RUNS / 2.0);
-    auto start = high_resolution_clock::now();
-    auto dx = float(x - i_zp) * i_sc;
-    auto y = std::tanh(dx);
-    auto qy = int32_t(std::round(y * o_sc_inv + o_zp));
-    qy = std::min<int32_t>(std::max<int32_t>(qy, qmin), qmax);
-    auto stop = high_resolution_clock::now();
-    time_span += duration_cast<duration<double, micro>>(stop - start).count();
-  }
+  start = high_resolution_clock::now();
+  asm volatile("run_cmath2:\n\t");
+  run_cmath<true, true>(RUNS);
+  stop = high_resolution_clock::now();
+  time_span = count(start, stop);
   cout << "\tIt took me on average " << time_span / RUNS << " us/iter" << endl;
 
   cout << "std::tanh (random input, with quantization):" << endl;
-  time_span = 0.0;
-  for (int idx = 0; idx < RUNS; ++idx) {
-    int32_t x = rand() % RUNS / 2;
-    auto start = high_resolution_clock::now();
-    auto dx = float(x - i_zp) * i_sc;
-    auto y = std::tanh(dx);
-    auto qy = int32_t(std::round(y * o_sc_inv + o_zp));
-    qy = std::min<int32_t>(std::max<int32_t>(qy, qmin), qmax);
-    auto stop = high_resolution_clock::now();
-    time_span += duration_cast<duration<double, micro>>(stop - start).count();
-  }
+  start = high_resolution_clock::now();
+  asm volatile("run_cmath3:\n\t");
+  run_cmath<false, true>(RUNS);
+  stop = high_resolution_clock::now();
+  time_span = count(start, stop);
   cout << "\tIt took me on average " << time_span / RUNS << " us/iter" << endl;
 }
